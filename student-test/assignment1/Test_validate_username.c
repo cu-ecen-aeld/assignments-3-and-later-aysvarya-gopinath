@@ -14,8 +14,9 @@
 */
 void test_validate_my_username()
 {
-     char expected[20] , actual[20]; // declaring strings to compare
-     strcpy(expected, my_username()); 
-      strcpy(actual, malloc_username_from_conf_file()); 
-     TEST_ASSERT_EQUAL_STRING_MESSAGE(expected, actual,"Username matched!!"); //comparing usernames
+     char expected[20], *actual;// declaring strings to compare
+     expected=my_username(); 
+     actual=malloc_username_from_conf_file(); 
+     TEST_ASSERT_EQUAL_STRING_MESSAGE(expected, actual,"Usernames not matching!!"); //comparing usernames
+     free(actual); // free the malloced buffer
 }
