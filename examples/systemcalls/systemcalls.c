@@ -1,4 +1,11 @@
 #include "systemcalls.h"
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -9,14 +16,10 @@
 */
 bool do_system(const char *cmd)
 {
-
-/*
- * TODO  add your code here
- *  Call the system() function with the command set in the cmd
- *   and return a boolean true if the system() call completed with success
- *   or false() if it returned a failure
-*/
-
+int status=system(cmd); // makes C code to run shell commands
+if(status!=0)//returns a non zero for error status
+   return false;
+else 
     return true;
 }
 
@@ -34,34 +37,43 @@ bool do_system(const char *cmd)
 *   by the command issued in @param arguments with the specified arguments.
 */
 
-bool do_exec(int count, ...)
-{
+bool do_exec(int count, ...) {
     va_list args;
     va_start(args, count);
-    char * command[count+1];
+    char *command[count + 1];
     int i;
-    for(i=0; i<count; i++)
-    {
+
+    // Build the command array
+    for (i = 0; i < count; i++) {
         command[i] = va_arg(args, char *);
     }
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
 
-/*
- * TODO:
- *   Execute a system command by calling fork, execv(),
- *   and wait instead of system (see LSP page 161).
- *   Use the command[0] as the full path to the command to execute
- *   (first argument to execv), and use the remaining arguments
- *   as second argument to the execv() command.
- *
-*/
+    const char* full_path = command[0];  // Extract the full path
+    if (full_path[0] != '/') {// Check if it's an absolute path
+        return false;  
+    }
+else{ // if absolute path is given 
+    int pid = fork();  // Create a new process
+    if (pid == -1) {
+        return false;  // Error in forking
+    }
+    if (pid == 0) {  // Child process
+        execv(full_path, command);  // Attempt to execute the command
+        perror("execv failed"); // \execv fails, return false
+        exit(-1); 
+    }
+ // Parent process waits for the child to finish
+    int status;
+    if (waitpid(pid, &status, 0) == -1) {
+        return false;  // Error waiting for child
+    }
+    if (WIFEXITED(status)) { // checking childs exit status
+        return WEXITSTATUS(status)==0;  //  true if the child exited successfully
+    }
+    return false;  // false if the child process didn't exit normally
+}
 
-    va_end(args);
-
-    return true;
 }
 
 /**
@@ -69,31 +81,57 @@ bool do_exec(int count, ...)
 *   This file will be closed at completion of the function call.
 * All other parameters, see do_exec above
 */
-bool do_exec_redirect(const char *outputfile, int count, ...)
-{
+bool do_exec_redirect(const char *outputfile, int count, ...) {
     va_list args;
     va_start(args, count);
-    char * command[count+1];
-    int i;
-    for(i=0; i<count; i++)
-    {
+    char *command[count + 1];
+    for (int i = 0; i < count; i++) {
         command[i] = va_arg(args, char *);
     }
-    command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
+    command[count] = NULL;  // Null-terminate the command array
 
+    const char *full_path = command[0]; // Extract the full path
+    if (full_path[0] != '/') {
+        return false;  // Only accept absolute paths
+    }
+    int fd = open(outputfile, O_WRONLY | O_TRUNC | O_CREAT, 0644); //opens the output file
+    if (fd < 0) {                                 //if not available it creates
+        perror("open");
+        va_end(args);
+        return false; // error opening file
+    }
+   int pid = fork(); // fork the child process
+   switch (pid) { 
+    case -1: {
+        perror("child cannot be forked");  //child not created
+        close(fd);
+        va_end(args);
+        return false;
+    }
 
-/*
- * TODO
- *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
- *   redirect standard out to a file specified by outputfile.
- *   The rest of the behaviour is same as do_exec()
- *
-*/
-
+    case 0: {  // if pid is 0 then Child process
+        if (dup2(fd,1) < 0) {  // Redirect stdout to the file (stdout fd is 1)
+            perror("dup2");
+            close(fd);
+            exit(EXIT_FAILURE);
+        }
+        close(fd);
+        execv(full_path, command);  // Execute the command
+        perror("execv");            // Only reaches here if execv fails
+        exit(EXIT_FAILURE);
+    }
+default:{
+    // Parent process
+    close(fd);
+    int status;
+    if (waitpid(pid, &status, 0) == -1) { // check the chils exit status
+        perror("waitpid");
+        va_end(args);
+        return false;
+   } 
     va_end(args);
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    }
+}}
 
-    return true;
-}
+
