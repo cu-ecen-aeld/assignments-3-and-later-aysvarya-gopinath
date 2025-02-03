@@ -1,6 +1,7 @@
 #!/bin/bash
 # Script outline to install and build kernel.
 # Author: Siddhant Jajoo.
+#Modified by:Aysvarya Gopinath
 #REFERENCES:https://askubuntu.com/questions/1376461/copy-all-from-a-folder-into-the-project-root-directory
 
 set -e
@@ -87,32 +88,33 @@ echo "Library dependencies"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
-# TODO: Add library dependencies to rootfs
+echo "adding library dependencies to rootfs"
 
 export SYSROOT=$(aarch64-none-linux-gnu-gcc -print-sysroot)
-
 sudo cp -L $SYSROOT/lib/ld-linux-aarch64.so.1 ${OUTDIR}/rootfs/lib
-sudo cp -L $SYSROOT/lib64/libc.so.6 ${OUTDIR}/rootfs/lib64
 sudo cp -L $SYSROOT/lib64/libm.so.6 ${OUTDIR}/rootfs/lib64
 sudo cp -L $SYSROOT/lib64/libresolv.so.2 ${OUTDIR}/rootfs/lib64
+sudo cp -L $SYSROOT/lib64/libc.so.6 ${OUTDIR}/rootfs/lib64
 
 
-
+echo "creating device nodes"
 cd "${OUTDIR}/rootfs"
 #device nodes
-sudo rm -f /dev/null
+sudo rm -f /dev/null #cleanup
 sudo rm -f /dev/console
 
 sudo mknod -m 666 "/dev/null" c 1 3 # null device
 sudo mknod -m 600 "/dev/console" c 5 1 # console device 
 
 # Clean and build the writer utility
+echo "making the writer app"
 cd ${FINDER_APP_DIR} 
 make clean
 make CROSS_COMPILE=${CROSS_COMPILE} #make with arm compiler
 
 # Copy the finder related scripts and executables to the /home directory
 # on the target rootfs
+echo "copying finder scripts to new root file system"
 cp -a ./writer ${OUTDIR}/rootfs/home  # -a preserves attributes
 cp -a ./finder.sh ${OUTDIR}/rootfs/home 
 cp -r ./conf/ ${OUTDIR}/rootfs/home #/. copies hidden files 
@@ -123,11 +125,13 @@ cp -a ./Makefile  ${OUTDIR}/rootfs/home
 
 
 #Chown the root directory
+echo "giviing root permissions to file system"
 cd "${OUTDIR}/rootfs"
 sudo chown -R root:root * #make contents owned by root
 
 # Create initramfs.cpio.gz
 #cd "$OUTDIR/rootfs"
+echo "creating initramfs image"
 find . | cpio -H newc -ov --owner root:root > ${OUTDIR}/initramfs.cpio
 cd ..
 #cd ${OUTDIR}
