@@ -74,7 +74,7 @@ git clone git://busybox.net/busybox.git
     make defconfig
 
 else
-    cd busybox
+    cd busybox #"change"
 fi
 
 echo "installing busy box"
