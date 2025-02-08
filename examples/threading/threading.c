@@ -45,7 +45,7 @@ if(thread_func_args->thread_complete_success == true) //Set to true if the threa
 DEBUG_LOG("MUTEX successfully obtained by the thread");
 }
 //free(thread_func_args);
-//return NULL;
+//return NULL;    //freeing
 return thread_param; // Return the thread_data pointer
 }
 
