@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
         close(new_fd);  //close the connection
     }
 
-    close(sockfd);
+    close(sockfd);  //close the socket
     closelog();
     shutdown(sockfd,2); //cutoff further sends and receives
     return 0;
