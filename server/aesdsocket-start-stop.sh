@@ -2,11 +2,11 @@
 
 case "$1" in 
     start)
-        echo "START AESD SOCKET"
+        echo "STARTED AESD SOCKET"
         start-stop-daemon -S -n aesdsocket -a /usr/bin/aesdsocket -- -d
         ;;
     stop)
-        echo "STOP AESD SOCKET"
+        echo "STOPPED AESD SOCKET"
         start-stop-daemon -K -n aesdsocket
         ;;
     *)
