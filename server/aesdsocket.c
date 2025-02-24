@@ -116,23 +116,25 @@ int main(int argc, char *argv[]) {
     if (argc > 1 && strcmp(argv[1], "-d") == 0) {  //checking if -d arg is passed
         daemonize(); //call daemon function
     }
-    //loop until connection is made and data is transfered without any interrupts
+//loop until connection is made and data is transfered without any interrupts
     while (1) {
         new_fd = accept(sockfd, (struct sockaddr *)&client_addr, &addr_size); //accepts connection with a requested node
         if (new_fd == -1) {  //client node
             syslog(LOG_ERR, "Accept failed");
             continue;  
         }
-      //extract the IP address of the client
+//extract the IP address of the client
         inet_ntop(client_addr.ss_family, get_in_addr((struct sockaddr *)&client_addr), s, sizeof s);
         syslog(LOG_INFO, "Accepted connection from %s", s);
-
+       
+//open file to write and read contents
      FILE *fd = fopen(write_file, "a+"); //open the file at the specied path/ create if it doesnt exist
     if (fd == NULL) {
          syslog(LOG_ERR, "File open failed");
           close(new_fd);
+          return -1; 
     }
-    //receive data from the client node
+//receive data from the client node
         while ((bytes_received = recv(new_fd, buffer, BUFFER_SIZE, 0)) > 0) {
            buffer[bytes_received] = '\0'; //null terminate the packets
            fwrite(buffer,1,bytes_received,fd); //block transfer of the received bytes to the file 
@@ -145,11 +147,12 @@ int main(int argc, char *argv[]) {
                 }
             } 
         }
-  
+        fclose(fd); //close the file
         syslog(LOG_INFO, "Closed connection to %s", s);
-        close(new_fd);  //close the connection
-    }
-
+        close(new_fd);  //close the connection    
+    } 
+   
+    remove(write_file); //remove file
     close(sockfd);  //close the socket
     closelog();
     shutdown(sockfd,2); //cutoff further sends and receives
