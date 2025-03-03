@@ -83,11 +83,13 @@ void signal_handler(int signo) {
      perror("ERROR: Failed on shutdown");
      syslog(LOG_ERR,"Failed to shoutdown in signal handler");
      }
+      syslog(LOG_ERR,"HANDLER EXIT SET");
      handler_exit=1; //set the flag to exit and remove the file
 }
 
 //Function to run the application as daemon
 void daemonize() {
+     
     pid_t pid = fork();  //create a child process
     if (pid < 0) {
      exit(EXIT_FAILURE);  //fork failed
@@ -109,20 +111,32 @@ void daemonize() {
 
 //timer handler triggered every 10seconds
 void* timestamp_file(void *arg) {
+ syslog(LOG_INFO,"JUST ENTERED TIMESTAMP FUNCTION AFTER CREATION");
 while (!handler_exit) {
 //sleep(10);
-for(int i = 0; i < 10 && !handler_exit; i++) {
+
+syslog(LOG_INFO,"IN TIMESTAMPING FUNCTION");
+for(int i = 0; i < 8 && !handler_exit; i++) {
             sleep(1);
         } //suggested by Bharath Varma
     if(handler_exit) 
-    	break; //
+    	{break; //
+    	}
+    syslog(LOG_INFO,"NO INTERRUPTS OCCURED EXECUTING TIMESTAMPS");
     time_t t ; //variable to hold the current time
     struct tm *tmp ;  //structure pointer  to hold the local time
     char time_buffer[150]; //buffer to hold the formatted time string
     time( &t );//get the current time in UTC
     tmp = localtime( &t ); //convert to local time(system time zone)
         strftime(time_buffer, sizeof(time_buffer), "timestamp:%a, %d %b %Y %H:%M:%S %z\n", tmp);
-          pthread_mutex_lock(&file_lock);  //lock the file before writing /reading 
+          int rc=pthread_mutex_lock(&file_lock);  //lock the file before writing /reading 
+          if(rc==0)
+
+         {
+
+         syslog(LOG_ERR," aquire lock for stamping");
+
+         }
       FILE *fd =fopen(file_param.write_file, "a+");// Open the file in append mode and write the timestamp
         if (fd != NULL) {
           //  fprintf(fd, "Timestamp:%s\n", time_buffer);  //timestamp
@@ -134,8 +148,16 @@ for(int i = 0; i < 10 && !handler_exit; i++) {
             perror("Failed to open file");
             syslog(LOG_ERR,"Cannnot open file to timestamp");
         }
-        pthread_mutex_unlock(&file_lock);
+      int bc=  pthread_mutex_unlock(&file_lock);
+        if(bc==0)
+
+         {
+
+         syslog(LOG_ERR,"release lock after stamping");
+
+         }
        }
+      
         return NULL;
     }
 
@@ -243,6 +265,10 @@ int main(int argc, char *argv[]) {
         close(sockfd);
         return -1;
     }
+    else{
+    syslog(LOG_INFO, "Created timestamp thread");
+    }
+    
 
 
 //go to daemon mode after binding to the port
