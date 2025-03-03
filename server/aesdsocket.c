@@ -47,7 +47,6 @@ struct file_lock {
 //initailise parameters
 struct file_lock file_param = {
     .write_file = "/var/tmp/aesdsocketdata",//file path to write
-    //.lock = PTHREAD_MUTEX_INITIALIZER
 };
 
 pthread_mutex_t file_lock = PTHREAD_MUTEX_INITIALIZER;  //initiaise lock
