@@ -110,7 +110,12 @@ void daemonize() {
 //timer handler triggered every 10seconds
 void* timestamp_file(void *arg) {
 while (!handler_exit) {
-sleep(10);
+//sleep(10);
+for(int i = 0; i < 10 && !handler_exit; i++) {
+            sleep(1);
+        } //suggested by Bharath Varma
+    if(handler_exit) 
+    	break; //
     time_t t ; //variable to hold the current time
     struct tm *tmp ;  //structure pointer  to hold the local time
     char time_buffer[150]; //buffer to hold the formatted time string
@@ -118,7 +123,7 @@ sleep(10);
     tmp = localtime( &t ); //convert to local time(system time zone)
         strftime(time_buffer, sizeof(time_buffer), "timestamp:%a, %d %b %Y %H:%M:%S %z\n", tmp);
           pthread_mutex_lock(&file_lock);  //lock the file before writing /reading 
-      FILE *fd = fd = fopen(file_param.write_file, "a+");// Open the file in append mode and write the timestamp
+      FILE *fd =fopen(file_param.write_file, "a+");// Open the file in append mode and write the timestamp
         if (fd != NULL) {
           //  fprintf(fd, "Timestamp:%s\n", time_buffer);  //timestamp
           syslog(LOG_INFO,"Timestamping to the file");
@@ -153,6 +158,7 @@ void* fileIO(void *arg) {
     buffer[bytes_received] = '\0'; // Null terminate the packet ///
         fwrite(buffer, 1, bytes_received, fd); // Write received bytes to the file
         fflush(fd);  // Ensure data is written immediately
+ 
      if (strstr(buffer, "\n")) { // If newline is found in the data stream
         fclose(fd); // Close the file after writing
         fd = fopen(file_param.write_file, "r"); // Reopen file for reading
@@ -172,11 +178,12 @@ while (fgets(read_buffer, BUFFER_SIZE, fd) != NULL) {
             }
         }
         }
-
+  
     fclose(fd);
     pthread_mutex_unlock(&file_lock);// Unlock the file after the operations are done
     client_info->thread_complete = true;// Indicate that the thread has completed
     }
+    //
     close(new_fd);
     return NULL;// Return from the thread function
 }
@@ -237,6 +244,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+
 //go to daemon mode after binding to the port
     if (argc > 1 && strcmp(argv[1], "-d") == 0) {  //checking if -d arg is passed
         daemonize(); //call daemon function
@@ -276,19 +284,36 @@ int main(int argc, char *argv[]) {
 
     SLIST_FOREACH(thread_info, &head, entries){ //Traverse Linked list
         if(thread_info->value.thread_complete == true) { //only if  thread tasks are completed
+        close(thread_info->value.clientfd);  //close the client socket
             pthread_join(thread_info->value.tid, NULL);	// free the resources by joining the thread
-            thread_info = SLIST_FIRST(&head); //points to the head
-            SLIST_REMOVE_HEAD(&head, entries); //remove head
-            free(thread_info);
-            close(thread_info->value.clientfd);  //close the client socket
+            //thread_info = SLIST_FIRST(&head); //points to the head
+            //SLIST_REMOVE_HEAD(&head, entries); //remove head
+            //free(thread_info);
+            
          syslog(LOG_INFO,"Clearing all threads");
         }
-    } 
+    }
+    
+    while (!SLIST_EMPTY(&head)) 
+    {
+       thread_info = SLIST_FIRST(&head); //points to the head
+
+        SLIST_REMOVE_HEAD(&head, entries);
+
+        //free pointer
+        free(thread_info);
+
+        thread_info = NULL;
+    } //referred to Prof Chris Choi repository for this clean up
+     
     
     	pthread_join(timestamp_tid, NULL);  // Wait for the timestamp thread to exit
     close(sockfd);
     remove(file_param.write_file);
     closelog();
+
+
     return 0;
 }
 
+ //fulltest 1pass 1 fail , socketetest passes
