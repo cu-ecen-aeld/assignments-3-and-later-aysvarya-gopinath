@@ -154,7 +154,6 @@ void* fileIO(void *arg) {
     buffer[bytes_received] = '\0'; // Null terminate the packet ///
         fwrite(buffer, 1, bytes_received, fd); // Write received bytes to the file
         fflush(fd);  // Ensure data is written immediately
- 
      if (strstr(buffer, "\n")) { // If newline is found in the data stream
         fclose(fd); // Close the file after writing
         fd = fopen(file_param.write_file, "r"); // Reopen file for reading
@@ -179,7 +178,6 @@ while (fgets(read_buffer, BUFFER_SIZE, fd) != NULL) {
     pthread_mutex_unlock(&file_lock);// Unlock the file after the operations are done
     client_info->thread_complete = true;// Indicate that the thread has completed
     }
-    
     close(new_fd);
     return NULL;// Return from the thread function
 }
@@ -240,7 +238,6 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-
 //go to daemon mode after binding to the port
     if (argc > 1 && strcmp(argv[1], "-d") == 0) {  //checking if -d arg is passed
         daemonize(); //call daemon function
@@ -293,8 +290,6 @@ int main(int argc, char *argv[]) {
     close(sockfd);
     remove(file_param.write_file);
     closelog();
-
-
     return 0;
 }
 
