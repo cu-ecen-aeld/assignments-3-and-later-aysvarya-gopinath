@@ -325,7 +325,6 @@ int main(int argc, char *argv[])
         free(thread_info); // free pointer
         thread_info = NULL;
     } // referred to Prof Chris Choi repository for this clean up
-    // pthread_join(timestamp_tid, NULL); // Wait for the timestamp thread to exit
     close(sockfd);
     remove(file_param.write_file);
     closelog();
