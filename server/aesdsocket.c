@@ -69,7 +69,8 @@ typedef struct slist_data_s
 } slist_data_t;
 
 // initialise the head
-SLIST_HEAD(slisthead, slist_data_s)head = SLIST_HEAD_INITIALIZER(head);
+SLIST_HEAD(slisthead, slist_data_s)
+head = SLIST_HEAD_INITIALIZER(head);
 
 // Function to get the socket address(IPV4 or IPV6)
 void *get_in_addr(struct sockaddr *sa)
@@ -90,7 +91,6 @@ void signal_handler(int signo)
         perror("ERROR: Failed on shutdown");
         syslog(LOG_ERR, "Failed to shoutdown in signal handler");
     }
-    syslog(LOG_ERR, "HANDLER EXIT SET BY SIGNINT");
     handler_exit = 1; // set the flag to exit and remove the file
 }
 
@@ -120,31 +120,20 @@ void daemonize()
 // timer handler triggered every 10seconds
 void timestamp_handler(int signo)
 {
-    syslog(LOG_INFO, "JUST ENTERED TIMESTAMP FUNCTION AFTER THREAD CREATION");
-    if(signo==SIGALRM)
+    if (signo == SIGALRM)
     {
-        syslog(LOG_INFO, "HANDLER EXIT NOT SET IN TIMESTAMPING FUNCTION BEFORE SLEEPING");
-        syslog(LOG_INFO, "NO INTERRUPTS--HANDLER EXIT NOT SET AFTER SLEEPING--STARTING TO CALCULATE TIME");
         time_t t;              // variable to hold the current time
         struct tm *tmp;        // structure pointer  to hold the local time
         char time_buffer[150]; // buffer to hold the formatted time string
         time(&t);              // get the current time in UTC
         tmp = localtime(&t);   // convert to local time(system time zone)
         strftime(time_buffer, sizeof(time_buffer), "timestamp:%a, %d %b %Y %H:%M:%S %z\n", tmp);
-        syslog(LOG_INFO,"TRYING TO ACQUIRE LOCK BEFORE TIME STAMP");
         int rc = pthread_mutex_lock(&file_lock); // lock the file before writing /reading
-        if (rc == 0)
-        {
-            syslog(LOG_ERR, " aquired lock for stamping");
-        }
-        else
-        {
-         syslog(LOG_ERR, "unable to aquired lock for stamping");
-        }
+        if (rc != 0)
+            syslog(LOG_ERR, "unable to aquired lock for stamping");
         FILE *fd = fopen(file_param.write_file, "a+"); // Open the file in append mode and write the timestamp
         if (fd != NULL)
         {
-            syslog(LOG_INFO, "Timestamping to the file");
             fputs(time_buffer, fd);
             fflush(fd);
             fclose(fd);
@@ -154,19 +143,12 @@ void timestamp_handler(int signo)
             perror("Failed to open file");
             syslog(LOG_ERR, "Cannnot open file to timestamp");
         }
-        syslog(LOG_INFO,"TRYING TO UNLOCK AFTER TIME STAMP");
+
         int bc = pthread_mutex_unlock(&file_lock);
-        if (bc == 0)
-        {
-            syslog(LOG_ERR, "release lock after stamping");
-        }
-        else
-        {
-         syslog(LOG_ERR, "unable to release lock after stamping");
-        }
-        syslog(LOG_INFO, "EXITING TIMESTAMP FUNCTION WITHOUT handler exit flag");
+        if (bc != 0)
+            syslog(LOG_ERR, "unable to release lock after stamping");
     }
-   // return NULL;
+    // return NULL;
 }
 
 // function to perform the file operations
@@ -179,7 +161,6 @@ void *fileIO(void *arg)
     ssize_t bytes_received, data_length;
     while ((bytes_received = recv(new_fd, buffer, BUFFER_SIZE, 0)) > 0)
     {
-    syslog(LOG_INFO,"LOCKING BEFORE WRITING PACKETS");
         pthread_mutex_lock(&file_lock);                // Lock the file before writing/reading
         FILE *fd = fopen(file_param.write_file, "a+"); // Open the file in append mode
         if (!fd)
@@ -213,7 +194,6 @@ void *fileIO(void *arg)
         }
         fclose(fd);
         pthread_mutex_unlock(&file_lock);    // Unlock the file after the operations are done
-        syslog(LOG_INFO,"UNLOCKING AFTER WRITING PACKETS");
         client_info->thread_complete = true; // Indicate that the thread has completed
     }
     close(new_fd);
@@ -226,9 +206,8 @@ int main(int argc, char *argv[])
     struct addrinfo hints, *servinfo;    // holds hints nad server info
     struct sockaddr_storage client_addr; // address of the client
     socklen_t addr_size = sizeof(client_addr);
-    int new_fd,yes=1;
+    int new_fd, yes = 1;
     char s[INET6_ADDRSTRLEN] = "";
-    //pthread_t timestamp_tid;
     memset(&hints, 0, sizeof hints);
     slist_data_t *thread_info;
     // socket parameters
@@ -236,20 +215,16 @@ int main(int argc, char *argv[])
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     openlog(NULL, 0, LOG_USER); // open syslog
-    
-    syslog(LOG_INFO,"PROGRAM STARTED");
     // set up the signal handler
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-     signal(SIGALRM, timestamp_handler);
-     
+    signal(SIGALRM, timestamp_handler);
     // Set up the timer to trigger every 10 seconds
-     struct itimerval delay;
-     delay.it_value.tv_sec = 10;   // initial delay before the first trigger
-     delay.it_value.tv_usec = 0;
-     delay.it_interval.tv_sec = 10;  // Repeat every 10 seconds
-     delay.it_interval.tv_usec = 0;
-     
+    struct itimerval delay;
+    delay.it_value.tv_sec = 10; // initial delay before the first trigger
+    delay.it_value.tv_usec = 0;
+    delay.it_interval.tv_sec = 10; // Repeat every 10 seconds
+    delay.it_interval.tv_usec = 0;
     // getaddrinfo provides the socket address
     if (getaddrinfo(NULL, PORT, &hints, &servinfo) != 0)
     {
@@ -264,16 +239,14 @@ int main(int argc, char *argv[])
         freeaddrinfo(servinfo);
         return -1;
     }
-    
-    // allow port reusal  
-     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,sizeof(int)) == -1) {
+    // allow port reusal
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
+    {
         syslog(LOG_ERR, "Port reusal failed");
         close(sockfd);
         freeaddrinfo(servinfo);
         return -1;
-        }
-
-
+    }
     // bind the socket to an address and port number
     if (bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) == -1)
     {
@@ -290,20 +263,18 @@ int main(int argc, char *argv[])
         close(sockfd);
         return -1;
     }
-
     // go to daemon mode after binding to the port
     if (argc > 1 && strcmp(argv[1], "-d") == 0)
     {                // checking if -d arg is passed
         daemonize(); // call daemon function
     }
-
-  // Start the timer
-    int rec=setitimer(ITIMER_REAL, &delay, NULL);
-    if (rec) {
-		syslog(LOG_ERR,"Timer setup failed");
-		return -1;
-	}
-    
+    // Start the timer
+    int rec = setitimer(ITIMER_REAL, &delay, NULL);
+    if (rec)
+    {
+        syslog(LOG_ERR, "Timer setup failed");
+        return -1;
+    }
     // loop until connection is made and data is transfered without any interrupts(signals)
     while (!handler_exit)
     {
@@ -337,9 +308,9 @@ int main(int argc, char *argv[])
         }
         SLIST_INSERT_HEAD(&head, thread_info, entries);
     }
-
-    SLIST_FOREACH(thread_info, &head, entries)// Traverse Linked list
-    { 
+    // cleanup
+    SLIST_FOREACH(thread_info, &head, entries) // Traverse Linked list
+    {
         if (thread_info->value.thread_complete == true)
         {                                               // only if  thread tasks are completed
             close(thread_info->value.clientfd);         // close the client socket
@@ -347,7 +318,6 @@ int main(int argc, char *argv[])
             syslog(LOG_INFO, "Clearing all threads");
         }
     }
-
     while (!SLIST_EMPTY(&head))
     {
         thread_info = SLIST_FIRST(&head); // points to the head
@@ -355,13 +325,9 @@ int main(int argc, char *argv[])
         free(thread_info); // free pointer
         thread_info = NULL;
     } // referred to Prof Chris Choi repository for this clean up
-
-    //pthread_join(timestamp_tid, NULL); // Wait for the timestamp thread to exit
+    // pthread_join(timestamp_tid, NULL); // Wait for the timestamp thread to exit
     close(sockfd);
     remove(file_param.write_file);
-    syslog(LOG_INFO,"PROGRAM ENDED");
     closelog();
     return 0;
 }
-
-
