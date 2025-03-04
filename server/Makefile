@@ -1,13 +1,15 @@
-CC = $(CROSS_COMPILE)gcc
+CC ?= $(CROSS_COMPILE)gcc
+CFLAGS ?= -g -Wall -Werror
+TARGET ?= aesdsocket
+LDFLAGS ?= -lpthread -lrt
 
-all: aesdsocket
+all:	$(TARGET)
 
-aesdsocket: aesdsocket.o
-	$(CC) aesdsocket.o -o aesdsocket
-	
-aesdsocket.o: aesdsocket.c
-	$(CC) -g -Wall -Werror -c aesdsocket.c -o aesdsocket.o
+$(TARGET):	aesdsocket.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
-	rm -f aesdsocket aesdsocket.o
+	rm -f $(TARGET) 
+
+.PHONY:	all clean
 
