@@ -1,5 +1,6 @@
 # KERNEL OOPS MESSAGES
 ## echo “hello_world” > /dev/faulty
+  *The Program Counter indicates that a faulty write has occurred **faulty_write+0x10/0x20 [faulty]** in the faulty module. The fault happened  at 10bytes into the function , which is 0x20bytes long.As the faulty function is 32bytes(0x20 hex)long , the fault happened at 10bytes and the remaining 22bytes of the function was never executed.*
 ### Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000
 ```Mem abort info: 
   ESR = 0x0000000096000045 
