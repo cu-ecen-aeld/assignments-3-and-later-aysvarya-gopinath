@@ -45,7 +45,7 @@ Code: d2800001 d2800000 d503233f d50323bf (b900003f)
 ---[ end trace 0000000000000000 ]--- 
 ```
 ## DISASSEMBLY
-  * Objdump displays the assembly content associated with an object file. Passing the -S argument intermixes source with assembly for debugging. At offset 0x10, the instruction stores data from register wzr into the memory address pointed to by x1 (0x0). Since x1 was set to 0x0, this is an attempt to store at an invalid memory address, a **NULL** pointer access which causes the fault.*
+*Objdump displays the assembly content associated with an object file. Passing the -S argument intermixes source with assembly for debugging. At offset 0x10, the instruction stores data from register wzr into the memory address pointed to by x1 (0x0). Since x1 was set to 0x0, this is an attempt to store at an invalid memory address, a **NULL** pointer access which causes the fault.*
 ### Disassembly of section .text:
 ``` 0000000000000000 <faulty_write>:
    0:	d2800001 	mov	x1, #0x0                   	// #0
