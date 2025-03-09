@@ -1,7 +1,7 @@
 # KERNEL OOPS MESSAGES
 ## echo “hello_world” > /dev/faulty
 ### Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000
->Mem abort info:
+`Mem abort info:
   ESR = 0x0000000096000045
   EC = 0x25: DABT (current EL), IL = 32 bits
   SET = 0, FnV = 0
@@ -42,4 +42,4 @@ Call trace:
  el0t_64_sync+0x18c/0x190
 Code: d2800001 d2800000 d503233f d50323bf (b900003f) 
 ---[ end trace 0000000000000000 ]--- 
-
+`
