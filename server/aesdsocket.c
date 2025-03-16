@@ -34,13 +34,13 @@ CHAT-GPT--how to initialize HEAD without using init_slist
 #define PORT "9000"
 #define BACKLOG 10
 #define BUFFER_SIZE 1024
-#define USE_AESD_CHAR_DEVICE (1)
+#define USE_AESD_CHAR_DEVICE (0)
 
 #if USE_AESD_CHAR_DEVICE
 	#define WRITE_FILE ( "/dev/aesdchar" ) //driver already performs locking
 #else 
 	#define WRITE_FILE ("/var/tmp/aesdsocketdata")  //locks can be used
-
+#endif
 int sockfd = 0;
 volatile sig_atomic_t handler_exit = 0;
 
@@ -300,7 +300,7 @@ int main(int argc, char *argv[])
     } // referred to Prof Chris Choi repository for this clean up
     close(sockfd);
     #if (!USE_AESD_CHAR_DEVICE )
-         remove(DATA_FILE);
+         remove(WRITE_FILE);
      #endif
     closelog();
     return 0;
