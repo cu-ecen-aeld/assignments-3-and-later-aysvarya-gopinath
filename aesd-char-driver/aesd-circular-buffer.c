@@ -14,8 +14,9 @@
  #else
  #include <string.h>
  #endif
- #include "stdio.h"
+
  #include "aesd-circular-buffer.h"
+ 
  
  /*Function to calculate the next pointer position
  *Take an ins_offs or out_offs as inuput parameter

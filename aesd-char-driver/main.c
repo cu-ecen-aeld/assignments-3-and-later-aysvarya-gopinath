@@ -28,18 +28,13 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
 
-struct file_operations aesd_fops = {
-    .owner =    THIS_MODULE,
-    .read =     aesd_read,
-    .write =    aesd_write,
-    .open =     aesd_open,
-    .release =  aesd_release,
-};
+
 
 
 /**************************OPEN********************************/
 int aesd_open(struct inode *inode, struct file *filp)
 {
+struct aesd_dev *dev;
     PDEBUG("open");
     dev = container_of(inode->i_cdev, struct aesd_dev, cdev); 
    filp->private_data = dev; //pointer to the aesd_dev structure is stored in the private data field of the file
@@ -74,7 +69,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
        if (!entry)             //no data in buffer
        		goto out;
          
-   bytes_to_copy = entry->size-entry_offset //read from the offset till the end of the entry(<count)
+   bytes_to_copy = entry->size-entry_offset;//read from the offset till the end of the entry(<count)
     if (bytes_to_copy > count)     //if its greater than the requested count
         bytes_to_copy = count;  //then read the count 
         
@@ -142,8 +137,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         goto out;
     }
     dev->entry.buffptr=new_buff;
- void *dest_ptr=dev->entry.buffptr+ dev->entry.size; // destination pointer offset
- memcpy(dest_ptr,temp_buffer,bytes_to_write); // no newline encountered , append the bytes into the current entry
+ const void *dest_ptr=dev->entry.buffptr+ dev->entry.size; // destination pointer offset
+ memcpy((void *)dest_ptr,temp_buffer,bytes_to_write); // no newline encountered , append the bytes into the current entry
   dev->entry.size= dev->entry.size+ bytes_to_write; //update the current entry size
     if(new_line) //add data to the circular buffer
     {
@@ -162,6 +157,14 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     kfree(temp_buffer);
     return retval;
 }
+
+struct file_operations aesd_fops = {
+    .owner =    THIS_MODULE,
+    .read =     aesd_read,
+    .write =    aesd_write,
+    .open =     aesd_open,
+    .release =  aesd_release,
+};
 
 /**************************SETUP********************************/
 static int aesd_setup_cdev(struct aesd_dev *dev)
@@ -212,7 +215,7 @@ void aesd_cleanup_module(void)
  uint8_t index=0;
   struct aesd_buffer_entry *entry;
   AESD_CIRCULAR_BUFFER_FOREACH(entry,&aesd_device.buffer,index) {
-     free(entry->buffptr);   //free the memory of all the buffer entries
+     kfree(entry->buffptr);   //free the memory of all the buffer entries
  }
     dev_t devno = MKDEV(aesd_major, aesd_minor);
     cdev_del(&aesd_device.cdev);
