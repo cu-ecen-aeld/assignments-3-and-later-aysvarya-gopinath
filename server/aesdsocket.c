@@ -8,6 +8,7 @@
 *https://github.com/stockrt/queue.h/blob/master/sample.c
 *https://www.geeksforgeeks.org/strftime-function-in-c/
 *https://en.cppreference.com/w/c/chrono/strftime
+*https://stackoverflow.com/questions/70112972/partial-write
 CHAT-GPT--how to initialize HEAD without using init_slist
 */
 
@@ -34,7 +35,7 @@ CHAT-GPT--how to initialize HEAD without using init_slist
 #define PORT "9000"
 #define BACKLOG 10
 #define BUFFER_SIZE 1024
-#define USE_AESD_CHAR_DEVICE (0)
+#define USE_AESD_CHAR_DEVICE (1)
 
 #if USE_AESD_CHAR_DEVICE
 	#define WRITE_FILE ( "/dev/aesdchar" ) //driver already performs locking
@@ -132,12 +133,53 @@ void daemonize()
 void *fileIO(void *arg)
 {
     client_data *client_info = (client_data *)arg;
-    int new_fd = client_info->clientfd;
-    char buffer[BUFFER_SIZE];      // Buffer to store data received from the client
+    int new_fd = client_info->clientfd;   
+    int new_line=0; //check if newline occured 
     char read_buffer[BUFFER_SIZE]; // Buffer to store data read from the file
-    ssize_t bytes_received, data_length;
-    while ((bytes_received = recv(new_fd, buffer, BUFFER_SIZE, 0)) > 0)
+    ssize_t bytes_received=0, data_length=0,total_size=0,bytes_written;
+    
+     char *buffer = malloc(BUFFER_SIZE);// Buffer to store data received from the client
+    if (!buffer) {
+        syslog(LOG_ERR, "Memory allocation failed");
+        //close(new_fd);
+        free(buffer);
+        return NULL;
+    }
+    
+    while (1)
     {
+    bytes_received = recv(new_fd, buffer+total_size, BUFFER_SIZE- total_size, 0);
+    
+       if(bytes_received<=0){//connection closed
+             free(buffer);
+                close(new_fd);
+                return NULL;
+           }
+            total_size += bytes_received;  // Keep track of total data received
+            buffer[total_size] = '\0';
+              if (strstr(buffer, "\n")){
+             new_line=1; //set the flag to indicate newline
+           	break; //if newline recieved then exit and write to the file
+           	}
+            	
+          // Reallocate buffer to accommodate more data
+         if (total_size >= BUFFER_SIZE) {
+         char *temp = realloc(buffer, total_size+BUFFER_SIZE + 1);  
+            if (!temp) {
+                syslog(LOG_ERR, "Memory reallocation failed");
+                free(buffer);
+                close(new_fd);
+                return NULL;
+            }
+            buffer = temp;
+        }
+       
+        
+    }
+    
+  /////////////////////////////////////WRITING TO FILE////////////////////////////////////////////////////    
+  if(new_line==1)
+       { //newline occured
         #if (!USE_AESD_CHAR_DEVICE )
         pthread_mutex_lock(&file_lock);                // Lock the file before writing/reading
         #endif
@@ -148,14 +190,28 @@ void *fileIO(void *arg)
             #if (!USE_AESD_CHAR_DEVICE )
             pthread_mutex_unlock(&file_lock);
             #endif
-            break; // Exit if the file cannot be opened
+            return NULL; // Exit if the file cannot be opened
         }
-        buffer[bytes_received] = '\0';         // Null terminate the packet ///
-        fwrite(buffer, 1, bytes_received, fd); // Write received bytes to the file
-        fflush(fd);                            // Ensure data is written immediately
-        if (strstr(buffer, "\n"))
-        {                                           // If newline is found in the data stream
-            fclose(fd);                             // Close the file after writing
+       
+       // Handle partial writes
+        ssize_t remaining = total_size;
+        char *write_ptr = buffer;
+        while (remaining > 0) {
+            bytes_written = fwrite(write_ptr, 1, remaining, fd);
+            if (bytes_written < 0) {
+            fclose(fd); 
+             #if (!USE_AESD_CHAR_DEVICE )
+             pthread_mutex_unlock(&file_lock);
+             #endif
+                syslog(LOG_ERR, "File write failed");
+                break;
+            }
+            remaining -= bytes_written;
+            write_ptr += bytes_written;
+        }             
+              fflush(fd); 
+              fclose(fd); //reset the pointer
+           syslog(LOG_INFO, "Data completely written to the file");                              
             fd = fopen(file_param.write_file, "r"); // Reopen file for reading
             if (!fd)
             {
@@ -163,7 +219,9 @@ void *fileIO(void *arg)
                 #if (!USE_AESD_CHAR_DEVICE )
                 pthread_mutex_unlock(&file_lock); // Unlock if open fails
                 #endif
-                break;
+                free(buffer);
+              close(new_fd);
+                return NULL;
             }
             while (fgets(read_buffer, BUFFER_SIZE, fd) != NULL)
             {
@@ -174,13 +232,14 @@ void *fileIO(void *arg)
                     break;
                 }
             }
-        }
+        
         fclose(fd);
         #if (!USE_AESD_CHAR_DEVICE )
         pthread_mutex_unlock(&file_lock);    // Unlock the file after the operations are done
         #endif
+        }
         client_info->thread_complete = true; // Indicate that the thread has completed
-    }
+   free(buffer);
     close(new_fd);
     return NULL; // Return from the thread function
 }

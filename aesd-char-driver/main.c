@@ -8,7 +8,7 @@
  * @author Dan Walkes
  * @date 2019-10-22
  * @copyright Copyright (c) 2019
- *
+ * @references https://learning.oreilly.com/library/view/linux-device-drivers/0596005903/ch03.html#linuxdrive3-CHP-3-SECT-4.2
  */
 
 #include <linux/module.h>
