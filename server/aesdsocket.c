@@ -8,6 +8,7 @@
 *https://github.com/stockrt/queue.h/blob/master/sample.c
 *https://www.geeksforgeeks.org/strftime-function-in-c/
 *https://en.cppreference.com/w/c/chrono/strftime
+*https://stackoverflow.com/questions/70112972/partial-write
 CHAT-GPT--how to initialize HEAD without using init_slist
 */
 
@@ -34,7 +35,13 @@ CHAT-GPT--how to initialize HEAD without using init_slist
 #define PORT "9000"
 #define BACKLOG 10
 #define BUFFER_SIZE 1024
+#define USE_AESD_CHAR_DEVICE (1)
 
+#if USE_AESD_CHAR_DEVICE
+	#define WRITE_FILE ( "/dev/aesdchar" ) //driver already performs locking
+#else 
+	#define WRITE_FILE ("/var/tmp/aesdsocketdata")  //locks can be used
+#endif
 int sockfd = 0;
 volatile sig_atomic_t handler_exit = 0;
 
@@ -42,15 +49,19 @@ volatile sig_atomic_t handler_exit = 0;
 struct file_lock
 {
     const char *write_file; // file to read and write packets
+    #if (!USE_AESD_CHAR_DEVICE )
     pthread_mutex_t lock;   // Mutex to lock/unlock the file
+    #endif
 };
 
 // initailise parameters
 struct file_lock file_param = {
-    .write_file = "/var/tmp/aesdsocketdata", // file path to write
+    .write_file = WRITE_FILE, // file path to write
 };
 
+#if (!USE_AESD_CHAR_DEVICE )
 pthread_mutex_t file_lock = PTHREAD_MUTEX_INITIALIZER; // initiaise lock
+#endif
 
 // structure to hold the client threads parameter
 typedef struct client_node
@@ -117,70 +128,100 @@ void daemonize()
     chdir("/"); // change to root directory
 }
 
-// timer handler triggered every 10seconds
-void timestamp_handler(int signo)
-{
-    if (signo == SIGALRM)
-    {
-        time_t t;              // variable to hold the current time
-        struct tm *tmp;        // structure pointer  to hold the local time
-        char time_buffer[150]; // buffer to hold the formatted time string
-        time(&t);              // get the current time in UTC
-        tmp = localtime(&t);   // convert to local time(system time zone)
-        strftime(time_buffer, sizeof(time_buffer), "timestamp:%a, %d %b %Y %H:%M:%S %z\n", tmp);
-        int rc = pthread_mutex_lock(&file_lock); // lock the file before writing /reading
-        if (rc != 0)
-            syslog(LOG_ERR, "unable to aquired lock for stamping");
-        FILE *fd = fopen(file_param.write_file, "a+"); // Open the file in append mode and write the timestamp
-        if (fd != NULL)
-        {
-            fputs(time_buffer, fd);
-            fflush(fd);
-            fclose(fd);
-        }
-        else
-        {
-            perror("Failed to open file");
-            syslog(LOG_ERR, "Cannnot open file to timestamp");
-        }
-
-        int bc = pthread_mutex_unlock(&file_lock);
-        if (bc != 0)
-            syslog(LOG_ERR, "unable to release lock after stamping");
-    }
-    // return NULL;
-}
 
 // function to perform the file operations
 void *fileIO(void *arg)
 {
     client_data *client_info = (client_data *)arg;
-    int new_fd = client_info->clientfd;
-    char buffer[BUFFER_SIZE];      // Buffer to store data received from the client
+    int new_fd = client_info->clientfd;   
+    int new_line=0; //check if newline occured 
     char read_buffer[BUFFER_SIZE]; // Buffer to store data read from the file
-    ssize_t bytes_received, data_length;
-    while ((bytes_received = recv(new_fd, buffer, BUFFER_SIZE, 0)) > 0)
+    ssize_t bytes_received=0, data_length=0,total_size=0,bytes_written;
+    
+     char *buffer = malloc(BUFFER_SIZE);// Buffer to store data received from the client
+    if (!buffer) {
+        syslog(LOG_ERR, "Memory allocation failed");
+        //close(new_fd);
+        free(buffer);
+        return NULL;
+    }
+    
+    while (1)
     {
+    bytes_received = recv(new_fd, buffer+total_size, BUFFER_SIZE- total_size, 0);
+    
+       if(bytes_received<=0){//connection closed
+             free(buffer);
+                close(new_fd);
+                return NULL;
+           }
+            total_size += bytes_received;  // Keep track of total data received
+            buffer[total_size] = '\0';
+              if (strstr(buffer, "\n")){
+             new_line=1; //set the flag to indicate newline
+           	break; //if newline recieved then exit and write to the file
+           	}
+            	
+          // Reallocate buffer to accommodate more data
+         if (total_size >= BUFFER_SIZE) {
+         char *temp = realloc(buffer, total_size+BUFFER_SIZE + 1);  
+            if (!temp) {
+                syslog(LOG_ERR, "Memory reallocation failed");
+                free(buffer);
+                close(new_fd);
+                return NULL;
+            }
+            buffer = temp;
+        }
+       
+        
+    }
+    
+  /////////////////////////////////////WRITING TO FILE////////////////////////////////////////////////////    
+  if(new_line==1)
+       { //newline occured
+        #if (!USE_AESD_CHAR_DEVICE )
         pthread_mutex_lock(&file_lock);                // Lock the file before writing/reading
+        #endif
         FILE *fd = fopen(file_param.write_file, "a+"); // Open the file in append mode
         if (!fd)
         {
             syslog(LOG_ERR, "File open failed");
+            #if (!USE_AESD_CHAR_DEVICE )
             pthread_mutex_unlock(&file_lock);
-            break; // Exit if the file cannot be opened
+            #endif
+            return NULL; // Exit if the file cannot be opened
         }
-        buffer[bytes_received] = '\0';         // Null terminate the packet ///
-        fwrite(buffer, 1, bytes_received, fd); // Write received bytes to the file
-        fflush(fd);                            // Ensure data is written immediately
-        if (strstr(buffer, "\n"))
-        {                                           // If newline is found in the data stream
-            fclose(fd);                             // Close the file after writing
+       
+       // Handle partial writes
+        ssize_t remaining = total_size;
+        char *write_ptr = buffer;
+        while (remaining > 0) {
+            bytes_written = fwrite(write_ptr, 1, remaining, fd);
+            if (bytes_written < 0) {
+            fclose(fd); 
+             #if (!USE_AESD_CHAR_DEVICE )
+             pthread_mutex_unlock(&file_lock);
+             #endif
+                syslog(LOG_ERR, "File write failed");
+                break;
+            }
+            remaining -= bytes_written;
+            write_ptr += bytes_written;
+        }             
+              fflush(fd); 
+              fclose(fd); //reset the pointer
+           syslog(LOG_INFO, "Data completely written to the file");                              
             fd = fopen(file_param.write_file, "r"); // Reopen file for reading
             if (!fd)
             {
                 syslog(LOG_ERR, "File open failed");
+                #if (!USE_AESD_CHAR_DEVICE )
                 pthread_mutex_unlock(&file_lock); // Unlock if open fails
-                break;
+                #endif
+                free(buffer);
+              close(new_fd);
+                return NULL;
             }
             while (fgets(read_buffer, BUFFER_SIZE, fd) != NULL)
             {
@@ -191,11 +232,14 @@ void *fileIO(void *arg)
                     break;
                 }
             }
-        }
+        
         fclose(fd);
+        #if (!USE_AESD_CHAR_DEVICE )
         pthread_mutex_unlock(&file_lock);    // Unlock the file after the operations are done
+        #endif
+        }
         client_info->thread_complete = true; // Indicate that the thread has completed
-    }
+   free(buffer);
     close(new_fd);
     return NULL; // Return from the thread function
 }
@@ -218,13 +262,7 @@ int main(int argc, char *argv[])
     // set up the signal handler
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-    signal(SIGALRM, timestamp_handler);
-    // Set up the timer to trigger every 10 seconds
-    struct itimerval delay;
-    delay.it_value.tv_sec = 10; // initial delay before the first trigger
-    delay.it_value.tv_usec = 0;
-    delay.it_interval.tv_sec = 10; // Repeat every 10 seconds
-    delay.it_interval.tv_usec = 0;
+    
     // getaddrinfo provides the socket address
     if (getaddrinfo(NULL, PORT, &hints, &servinfo) != 0)
     {
@@ -268,13 +306,7 @@ int main(int argc, char *argv[])
     {                // checking if -d arg is passed
         daemonize(); // call daemon function
     }
-    // Start the timer
-    int rec = setitimer(ITIMER_REAL, &delay, NULL);
-    if (rec)
-    {
-        syslog(LOG_ERR, "Timer setup failed");
-        return -1;
-    }
+   
     // loop until connection is made and data is transfered without any interrupts(signals)
     while (!handler_exit)
     {
@@ -326,7 +358,9 @@ int main(int argc, char *argv[])
         thread_info = NULL;
     } // referred to Prof Chris Choi repository for this clean up
     close(sockfd);
-    remove(file_param.write_file);
+    #if (!USE_AESD_CHAR_DEVICE )
+         remove(WRITE_FILE);
+     #endif
     closelog();
     return 0;
 }

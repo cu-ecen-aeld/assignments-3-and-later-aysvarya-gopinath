@@ -14,8 +14,9 @@
  #else
  #include <string.h>
  #endif
- #include "stdio.h"
+
  #include "aesd-circular-buffer.h"
+ 
  
  /*Function to calculate the next pointer position
  *Take an ins_offs or out_offs as inuput parameter
@@ -76,11 +77,14 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(
  * new start location.
  * Any necessary locking must be handled by the caller
  * Any memory referenced in @param add_entry must be allocated by and/or must have a lifetime managed by the caller.
+ *Returns the pointer to the replaced entry to be freed when buffer is full and an entry is overwritten else NULL .
  */
- void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
+const char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
+ const char *buff_return = NULL; //returns the pointer to the ent before overwritting 
     if((buffer->in_offs == buffer->out_offs)&&(buffer->full ==true))  //buffer is full so overwrite the old value
    {
+                   buff_return = buffer->entry[buffer->in_offs].buffptr; //return the pointer to be overwritten for freeing
 		   buffer->entry[buffer->in_offs]= *add_entry ; //overwrite the oldest value
 	           buffer->out_offs =nextPtr(buffer->out_offs); //increment both pointers
 		   buffer->in_offs =nextPtr(buffer->in_offs) ; 
@@ -91,7 +95,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(
 	   buffer->in_offs =nextPtr(buffer->in_offs) ; //increment the input pointer		  
    }
    buffer->full =(buffer->in_offs == buffer->out_offs); //check if buffer is full
-   
+   return (buff_return);
 }
 
  
