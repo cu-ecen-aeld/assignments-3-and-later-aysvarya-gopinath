@@ -9,6 +9,7 @@
  * @date 2019-10-22
  * @copyright Copyright (c) 2019
  * @references https://learning.oreilly.com/library/view/linux-device-drivers/0596005903/ch03.html#linuxdrive3-CHP-3-SECT-4.2
+ *https://learning.oreilly.com/library/view/linux-device-drivers/0596005903/ch06.html#linuxdrive3-CHP-6-SECT-5.1
  */
 
 #include <linux/module.h>
@@ -18,8 +19,12 @@
 #include <linux/cdev.h>
 #include <linux/fs.h> // file_operations
 #include "aesdchar.h"
+#include "aesd_ioctl.h" //ioctl
  #include <linux/slab.h> 
- 
+#include <linux/uaccess.h>
+
+
+
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -87,6 +92,35 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
      mutex_unlock(&dev->lock);
      return retval; 
 
+}
+
+/*****************************LLSEEK****************************************/
+loff_t aesd_llseek(struct file *filp, loff_t off, int whence)
+{
+    struct aesd_dev *dev =filp->private_data;
+    loff_t newpos=0,file_size=0;
+   uint8_t index=0;
+  struct aesd_buffer_entry *entry;
+
+ // Lock mutex before acessing the global data
+    if (mutex_lock_interruptible(&dev->lock))
+        return -ERESTARTSYS; 
+       
+//calculate the current size of the file
+  AESD_CIRCULAR_BUFFER_FOREACH(entry,&dev->buffer,index) {
+   file_size+=entry->size; //summation of all the entry's size
+   }
+   mutex_unlock(&dev->lock);
+   newpos = fixed_size_llseek(filp, off, whence, file_size); //find the offset
+   
+   /* if (newpos < 0){
+    mutex_unlock(&dev->lock);
+    	 return -EINVAL;
+    	 }
+    	 
+    filp->f_pos = newpos;
+    mutex_unlock(&dev->lock);*/
+    return newpos;
 }
 
 /**************************WRITE********************************/
@@ -158,13 +192,67 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     return retval;
 }
 
+/**********************FOPS STRUCTURE**********************************************/
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
     .write =    aesd_write,
     .open =     aesd_open,
-    .release =  aesd_release,
+    .release=  aesd_release,
+    .llseek =   aesd_llseek,
+    .unlocked_ioctl =aesd_ioctl,
 };
+
+/*******************************IOCTL*******************************************/
+long aesd_adjust_file_offset(struct file *filp,unsigned int write_cmd,unsigned int write_cmd_offset)
+{
+   struct aesd_dev *dev =filp->private_data;
+    unsigned int newpos=0;
+     long retval=0;
+     
+    // Lock mutex before acessing the global data
+    if (mutex_lock_interruptible(&dev->lock))
+        return -ERESTARTSYS; 
+     
+    if ((write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)||(write_cmd_offset >= dev->buffer.entry[write_cmd].size)) {
+         retval= -EINVAL;  //write cmd or offset greater than the maximum possible size
+         goto out;
+    }
+
+     for (int i = 0; i < write_cmd; i++) { //calculate the start offset to write cmd
+        newpos = newpos+ dev->buffer.entry[i].size;
+    }
+    
+    filp->f_pos = newpos+ write_cmd_offset;
+    retval= 0; 
+    goto out;
+    
+  out: 
+     mutex_unlock(&dev->lock);
+    return retval;
+}
+
+long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) 
+{
+long retval=0;
+    struct aesd_seekto seekto;
+    switch (cmd) {
+    case AESDCHAR_IOCSEEKTO:
+        if (copy_from_user(&seekto, (const void __user *)arg, sizeof(seekto)) != 0) //copy buffer from user
+            return -EFAULT;
+         else {
+         	retval=aesd_adjust_file_offset(filp,seekto.write_cmd,seekto.write_cmd_offset); 
+         	if(retval!=0)
+         		return -EFAULT;	
+         	}     
+        break;
+    default:
+        return -ENOTTY;
+        break;
+    }
+    
+    return retval;
+}
 
 /**************************SETUP********************************/
 static int aesd_setup_cdev(struct aesd_dev *dev)
@@ -217,12 +305,14 @@ void aesd_cleanup_module(void)
   AESD_CIRCULAR_BUFFER_FOREACH(entry,&aesd_device.buffer,index) {
      kfree(entry->buffptr);   //free the memory of all the buffer entries
  }
+    //kfree(dev->entry.buffptr);
+    kfree(aesd_device.entry.buffptr);
     dev_t devno = MKDEV(aesd_major, aesd_minor);
     cdev_del(&aesd_device.cdev);
     mutex_destroy(&aesd_device.lock);
     unregister_chrdev_region(devno, 1);
-}
-
+}    
+    
 
 module_init(aesd_init_module);
 module_exit(aesd_cleanup_module);

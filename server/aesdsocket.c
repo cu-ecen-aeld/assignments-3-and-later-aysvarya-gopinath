@@ -31,6 +31,7 @@ CHAT-GPT--how to initialize HEAD without using init_slist
 #include <sys/time.h>
 #include <time.h>
 #include <errno.h>
+#include "../aesd-char-driver/aesd_ioctl.h"
 
 #define PORT "9000"
 #define BACKLOG 10
@@ -42,6 +43,7 @@ CHAT-GPT--how to initialize HEAD without using init_slist
 #else 
 	#define WRITE_FILE ("/var/tmp/aesdsocketdata")  //locks can be used
 #endif
+
 int sockfd = 0;
 volatile sig_atomic_t handler_exit = 0;
 
@@ -135,14 +137,13 @@ void *fileIO(void *arg)
     client_data *client_info = (client_data *)arg;
     int new_fd = client_info->clientfd;   
     int new_line=0; //check if newline occured 
+    int ioctl_cmd=0; //track if the obtained data is an ioctl command
     char read_buffer[BUFFER_SIZE]; // Buffer to store data read from the file
     ssize_t bytes_received=0, data_length=0,total_size=0,bytes_written;
     
      char *buffer = malloc(BUFFER_SIZE);// Buffer to store data received from the client
     if (!buffer) {
         syslog(LOG_ERR, "Memory allocation failed");
-        //close(new_fd);
-        free(buffer);
         return NULL;
     }
     
@@ -172,24 +173,71 @@ void *fileIO(void *arg)
                 return NULL;
             }
             buffer = temp;
+        } 
+  #if (USE_AESD_CHAR_DEVICE )     
+ 	if (strncmp(buffer, "AESDCHAR_IOCSEEKTO:", 20) == 0){ //if ioctl cmd
+        ioctl_cmd=1;
+        new_line=1;
+        break;
         }
-       
-        
+               
+   #endif  
     }
     
-  /////////////////////////////////////WRITING TO FILE////////////////////////////////////////////////////    
+ /////////////////////////////////////IOCTL OPERATIONS///////////////////////////////////////////////////     
   if(new_line==1)
        { //newline occured
+       if(ioctl_cmd){ //if ioctl command
+       #if (USE_AESD_CHAR_DEVICE )
+       unsigned int X,Y; //variables to hold write cmd and offset
+       if (sscanf(buffer, "AESDCHAR_IOCSEEKTO:%u,%u", &X, &Y) == 2) { //reads and verifies the formatted input
+          struct aesd_seekto seekto;
+         seekto.write_cmd = X;
+        seekto.write_cmd_offset = Y;
+         int fd = open(file_param.write_file, O_RDWR); 
+         if (fd<0) //cannot be opened 
+        { syslog(LOG_ERR, "File open failed by ioctl");
+        free(buffer);
+        close(new_fd);
+        return NULL;
+        }
+        else //opened
+        {
+        if(ioctl(fd, AESDCHAR_IOCSEEKTO, &seekto)==0) //ioctl  successfull
+         {
+         size_t bytes_read=0;
+            while ((bytes_read=read(fd,read_buffer, BUFFER_SIZE))>0)
+            {
+                if (send(new_fd, read_buffer, bytes_read, 0) == -1)
+                {
+                    syslog(LOG_ERR, "Failed to send packets to client");
+                    break;
+                }
+            }
+        
+        close(fd);
+        }
+        else 
+          syslog(LOG_ERR, "IOCTL NOT SUCCESSFULL");       
+       }
+       }
+       #endif
+       }
+/////////////////////////////////////WRITING TO FILE////////////////////////////////////////////////////         
+       else{ //if not ioctl cmd write to the device
         #if (!USE_AESD_CHAR_DEVICE )
         pthread_mutex_lock(&file_lock);                // Lock the file before writing/reading
         #endif
         FILE *fd = fopen(file_param.write_file, "a+"); // Open the file in append mode
-        if (!fd)
+        int fd = open(file_param.write_file, O_RDWR | O_APPEND | O_CREAT);
+        if (fd<0)
         {
-            syslog(LOG_ERR, "File open failed");
+            syslog(LOG_ERR, "File open failed for writing");
             #if (!USE_AESD_CHAR_DEVICE )
             pthread_mutex_unlock(&file_lock);
             #endif
+            free(buffer);//
+            close(new_fd);//
             return NULL; // Exit if the file cannot be opened
         }
        
@@ -198,7 +246,7 @@ void *fileIO(void *arg)
         char *write_ptr = buffer;
         while (remaining > 0) {
             bytes_written = fwrite(write_ptr, 1, remaining, fd);
-            if (bytes_written < 0) {
+            if (bytes_written == 0) {
             fclose(fd); 
              #if (!USE_AESD_CHAR_DEVICE )
              pthread_mutex_unlock(&file_lock);
@@ -238,7 +286,9 @@ void *fileIO(void *arg)
         pthread_mutex_unlock(&file_lock);    // Unlock the file after the operations are done
         #endif
         }
-        client_info->thread_complete = true; // Indicate that the thread has completed
+        }
+        
+  client_info->thread_complete = true; // Indicate that the thread has completed
    free(buffer);
     close(new_fd);
     return NULL; // Return from the thread function
