@@ -113,7 +113,7 @@ loff_t aesd_llseek(struct file *filp, loff_t off, int whence)
    mutex_unlock(&dev->lock);
    newpos = fixed_size_llseek(filp, off, whence, file_size); //find the offset
    
-   /* if (newpos < 0){
+  /*  if (newpos < 0){
     mutex_unlock(&dev->lock);
     	 return -EINVAL;
     	 }
@@ -122,6 +122,7 @@ loff_t aesd_llseek(struct file *filp, loff_t off, int whence)
     mutex_unlock(&dev->lock);*/
     return newpos;
 }
+
 
 /**************************WRITE********************************/
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
@@ -207,7 +208,8 @@ struct file_operations aesd_fops = {
 long aesd_adjust_file_offset(struct file *filp,unsigned int write_cmd,unsigned int write_cmd_offset)
 {
    struct aesd_dev *dev =filp->private_data;
-    unsigned int newpos=0;
+   // unsigned int newpos=0;
+      loff_t newpos=0;
      long retval=0;
      
     // Lock mutex before acessing the global data
@@ -222,8 +224,10 @@ long aesd_adjust_file_offset(struct file *filp,unsigned int write_cmd,unsigned i
      for (int i = 0; i < write_cmd; i++) { //calculate the start offset to write cmd
         newpos = newpos+ dev->buffer.entry[i].size;
     }
-    
-    filp->f_pos = newpos+ write_cmd_offset;
+    PDEBUG("adjusted the file offset");
+    newpos+= write_cmd_offset;
+    filp->f_pos = newpos;
+    PDEBUG("IOCTL SEEK: write_cmd=%u, write_cmd_offset=%u, fpos=%lld\n",write_cmd, write_cmd_offset, newpos);
     retval= 0; 
     goto out;
     
@@ -232,21 +236,27 @@ long aesd_adjust_file_offset(struct file *filp,unsigned int write_cmd,unsigned i
     return retval;
 }
 
+
 long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) 
 {
 long retval=0;
     struct aesd_seekto seekto;
     switch (cmd) {
     case AESDCHAR_IOCSEEKTO:
+    PDEBUG("AESDCHAR_IOCSEEKTO received:");
         if (copy_from_user(&seekto, (const void __user *)arg, sizeof(seekto)) != 0) //copy buffer from user
             return -EFAULT;
          else {
+        	 PDEBUG("ioctl");
          	retval=aesd_adjust_file_offset(filp,seekto.write_cmd,seekto.write_cmd_offset); 
          	if(retval!=0)
          		return -EFAULT;	
+               else
+               		PDEBUG("ioctl requests to change file offset and successfull");
          	}     
         break;
     default:
+    PDEBUG("recieved 0x%x instead of  AESDCHAR_IOCSEEKTO\n",cmd);
         return -ENOTTY;
         break;
     }
