@@ -252,7 +252,8 @@ long retval=0;
          	if(retval!=0)
          		return -EFAULT;	
                else
-               		PDEBUG("ioctl requests to change file offset and successfull");
+               		{PDEBUG("ioctl requests to change file offset and successfull");
+               		  pr_info("iotcl successfully done");}
          	}     
         break;
     default:
