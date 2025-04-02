@@ -39,6 +39,9 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos);
  ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos);
+long aesd_ioctl(struct file *filp, unsigned int command, unsigned long arg);               
+loff_t aesd_llseek(struct file *filp, loff_t off, int f_flags);    
+long aesd_adjust_file_offset(struct file *filp,unsigned int write_cmd,unsigned int write_cmd_offset);            
 static int aesd_setup_cdev(struct aesd_dev *dev);                             
  int aesd_init_module(void);
  void aesd_cleanup_module(void) ;
