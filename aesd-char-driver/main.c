@@ -112,14 +112,6 @@ loff_t aesd_llseek(struct file *filp, loff_t off, int whence)
    }
    mutex_unlock(&dev->lock);
    newpos = fixed_size_llseek(filp, off, whence, file_size); //find the offset
-   
-  /*  if (newpos < 0){
-    mutex_unlock(&dev->lock);
-    	 return -EINVAL;
-    	 }
-    	 
-    filp->f_pos = newpos;
-    mutex_unlock(&dev->lock);*/
     return newpos;
 }
 
@@ -208,10 +200,8 @@ struct file_operations aesd_fops = {
 long aesd_adjust_file_offset(struct file *filp,unsigned int write_cmd,unsigned int write_cmd_offset)
 {
    struct aesd_dev *dev =filp->private_data;
-   // unsigned int newpos=0;
       loff_t newpos=0;
      long retval=0;
-     
     // Lock mutex before acessing the global data
     if (mutex_lock_interruptible(&dev->lock))
         return -ERESTARTSYS; 
@@ -247,14 +237,14 @@ long retval=0;
         if (copy_from_user(&seekto, (const void __user *)arg, sizeof(seekto)) != 0) //copy buffer from user
             return -EFAULT;
          else {
-        	 PDEBUG("ioctl");
          	retval=aesd_adjust_file_offset(filp,seekto.write_cmd,seekto.write_cmd_offset); 
          	if(retval!=0)
          		return -EFAULT;	
-               else
-               		{PDEBUG("ioctl requests to change file offset and successfull");
-               		  pr_info("iotcl successfully done");}
-         	}     
+               else{
+               	 PDEBUG("ioctl requests to change file offset and successfull");
+               	 pr_info("iotcl successfully done");
+               	 }
+         }     
         break;
     default:
     PDEBUG("recieved 0x%x instead of  AESDCHAR_IOCSEEKTO\n",cmd);
@@ -316,7 +306,6 @@ void aesd_cleanup_module(void)
   AESD_CIRCULAR_BUFFER_FOREACH(entry,&aesd_device.buffer,index) {
      kfree(entry->buffptr);   //free the memory of all the buffer entries
  }
-    //kfree(dev->entry.buffptr);
     kfree(aesd_device.entry.buffptr);
     dev_t devno = MKDEV(aesd_major, aesd_minor);
     cdev_del(&aesd_device.cdev);
